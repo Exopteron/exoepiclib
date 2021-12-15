@@ -48,6 +48,7 @@ public class ExoNetworkManager {
             e.printStackTrace();
         }
     }
+    // TODO warn of unregistered packets
     public Packet<ClientPlayPacketListener> assemble(ExoPacket packet) {
         PacketByteBuf buf = PacketByteBufs.create();
         Integer packetID = this.packetToId.get(packet.getClass());
