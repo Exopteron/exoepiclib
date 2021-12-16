@@ -94,6 +94,8 @@ public class ExoNetworkManager {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+            } else {
+                throw new UnregisteredPacketException("Unknown custom packet on channel " + this.channel.toString() + " with id " + packetID);
             }
         });
     }

@@ -36,8 +36,9 @@ public class ClientNetworking {
                     });
                 } catch (Exception e) {
                     e.printStackTrace();
-                    // TODO handle gracefully
                 }
+            } else {
+                throw new UnregisteredPacketException("Unknown custom packet on channel " + netManager.channel.toString() + " with id " + packetID);
             }
         });
     }
