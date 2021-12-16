@@ -20,19 +20,21 @@ import java.util.HashMap;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.network.Packet;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.listener.ClientPlayPacketListener;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.TranslatableText;
 import net.minecraft.util.Identifier;
 
 public class ExoNetworkManager {
     public HashMap<Integer, Class<? extends ExoPacket>> idToPackets;
     public HashMap<Class<? extends ExoPacket>, Integer> packetToId;
     public Identifier channel;
+
     public ExoNetworkManager(Identifier channel) {
         this.idToPackets = new HashMap<Integer, Class<? extends ExoPacket>>();
         this.packetToId = new HashMap<Class<? extends ExoPacket>, Integer>();
@@ -40,6 +42,7 @@ public class ExoNetworkManager {
         this.registerServerHandler();
         ClientNetworking.registerClientNetHandler(this);
     }
+
     public void registerPacket(int id, Class<? extends ExoPacket> packet) {
         try {
             this.packetToId.put(packet, id);
@@ -48,36 +51,31 @@ public class ExoNetworkManager {
             e.printStackTrace();
         }
     }
-    // TODO warn of unregistered packets
-    public Packet<ClientPlayPacketListener> assemble(ExoPacket packet) {
+    public Packet<ClientPlayPacketListener> assemble(ExoPacket packet) throws UnregisteredPacketException {
         PacketByteBuf buf = PacketByteBufs.create();
         Integer packetID = this.packetToId.get(packet.getClass());
         if (packetID != null) {
             buf.writeVarInt(packetID);
             packet.write(buf);
             return (Packet<ClientPlayPacketListener>) ServerPlayNetworking.createS2CPacket(this.channel, buf);
+        } else {
+            throw new UnregisteredPacketException("Unknown packet at class " + packet.getClass());
         }
-        return null;
     }
+
     public void sendPacketToClient(ExoPacket packet, ServerPlayerEntity player) {
-        PacketByteBuf buf = PacketByteBufs.create();
-        Integer packetID = this.packetToId.get(packet.getClass());
-        if (packetID != null) {
-            buf.writeVarInt(packetID);
-            packet.write(buf);
-            ServerPlayNetworking.send(player, this.channel, buf);
-        }
+        player.networkHandler.sendPacket(this.assemble(packet));
     }
+
     @Environment(EnvType.CLIENT)
     public void sendPacketToServer(ExoPacket packet) {
-        PacketByteBuf buf = PacketByteBufs.create();
-        Integer packetID = this.packetToId.get(packet.getClass());
-        if (packetID != null) {
-            buf.writeVarInt(packetID);
-            packet.write(buf);
-            ClientPlayNetworking.send(this.channel, buf);
-        }
+        if (MinecraftClient.getInstance().getNetworkHandler() != null) {
+			MinecraftClient.getInstance().getNetworkHandler().sendPacket(this.assemble(packet));
+			return;
+		}
+        throw new IllegalStateException("Cannot send packets when not in game!");
     }
+
     private void registerServerHandler() {
         ServerPlayNetworking.registerGlobalReceiver(this.channel, (server, player, handler, buf, responseSender) -> {
             int packetID = buf.readVarInt();
@@ -87,11 +85,14 @@ public class ExoNetworkManager {
                     ExoPacket instance = packet.getConstructor().newInstance();
                     instance.read(buf);
                     server.execute(() -> {
+                        try {
                             instance.handle(player, Side.LOGICAL_SERVER);
+                        } catch (Exception e) {
+                            player.networkHandler.disconnect(new TranslatableText("disconnect.disconnected"));
+                        }
                     });
                 } catch (Exception e) {
                     e.printStackTrace();
-                    // TODO handle gracefully
                 }
             }
         });

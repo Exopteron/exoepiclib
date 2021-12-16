@@ -28,7 +28,11 @@ public class ClientNetworking {
                     ExoPacket instance = packet.getConstructor().newInstance();
                     instance.read(buf);
                     client.execute(() -> {
+                        try {
                             instance.handle(client.player, Side.LOGICAL_CLIENT);
+                        } catch (Exception e) {
+                            client.disconnect();
+                        }
                     });
                 } catch (Exception e) {
                     e.printStackTrace();
